@@ -28,10 +28,15 @@ if [ "x$FACTER_CONDUCTOR_PORT" = "x" ]; then
   export FACTER_CONDUCTOR_PORT=3000
 fi
 
+# Set these variables if you want this script to install and start
+# deltalcoud locally
+#INSTALL_DELTACLOUD=yes
+#INSTALL_DELTACLOUD_RELEASE=release-1.0.4
+
 # If you want to use system ruby for the aeolus projects, do not
 # define this env var.  Otherwise, use (and install if necessary)
 # specified ruby version locally in ~/.rbenv for $DEV_USERNAME
-# export RBENV_VERSION=1.9.3-p194
+# export RBENV_VERSION=1.9.3-p327
 
 if `netstat -tlpn | grep -q -P "\:$FACTER_CONDUCTOR_PORT\\s"`; then
   echo "A process is already listening on port $FACTER_CONDUCTOR_PORT.  Aborting"
@@ -217,6 +222,15 @@ getent group | grep -q -P '^puppet:'
 if [ $? -ne 0 ]; then
   # workaround puppet bug http://projects.puppetlabs.com/issues/9862
   groupadd puppet
+fi
+
+# If we want this script to install and use deltacloud locally
+if [ "x$INSTALL_DELTACLOUD" = "xyes" ]; then
+  if [ "x$INSTALL_DELTACLOUD_RELEASE" = "x" ]; then
+    export INSTALL_DELTACLOUD_RELEASE=release-1.0.4
+  fi
+  
+  su $DEV_USERNAME -c "curl https://raw.github.com/cwolferh/deltacloud-dev-tools/master/bootstrap.sh | RUBY_VERSION=$RBENV_VERSION DELTACLOUD_RELEASE=$INSTALL_DELTACLOUD_RELEASE WORKDIR=$WORKDIR/deltacloud SKIP_RBENV_INSTALL=yes PATH=$DEV_USERNAME_PATH_PREFIX:\`echo \$PATH\` sh -x /home/test/deltacloud-dev-tools/bootstrap.sh"
 fi
 
 # First run as root to install needed dependencies
