@@ -25,6 +25,24 @@ if [ "x$FACTER_CONDUCTOR_PORT" = "x" ]; then
   export FACTER_CONDUCTOR_PORT=3000
 fi
 
+# RDBMS type, dbname, username, password to use for the install
+if [ "x$FACTER_RDBMS" = "x" ]; then
+  export FACTER_RDBMS=sqlite
+fi
+
+# If using postgresql, set some sane defaults if not present in environment
+if [ "$FACTER_RDBMS" = "postgresql" ]; then 
+  if [ "x$FACTER_RDBMS_DBNAME" = "x" ]; then
+    export FACTER_RDBMS_DBNAME=conductor
+  fi
+  if [ "x$FACTER_RDBMS_USERNAME" = "x" ]; then
+    export FACTER_RDBMS_USERNAME=$USER
+  fi
+  if [ "x$FACTER_RDBMS_PASSWORD" = "x" ]; then
+    export FACTER_RDBMS_PASSWORD=v23zj59an
+  fi
+fi
+
 # If you want to use system ruby for the aeolus projects, do not
 # define this env var.  Otherwise, use (and install if necessary)
 # specified ruby version locally in ~/.rbenv for $DEV_USERNAME
@@ -135,8 +153,11 @@ if [ "$os" = "f16" -o "$os" = "f17" -o "$os" = "el6" ]; then
   # Puppet and puppet modules deps
   depends="$depends openssl-devel lsof"
 
-  # TODO don't need this if using postgres
-  depends="$depends sqlite-devel"  #sqlite3
+  if [ "$FACTER_RDBMS" = "sqlite" ]; then
+    depends="$depends sqlite-devel"  #sqlite3
+  elif [ "$FACTER_RDBMS" = "postgresql" ]; then
+    depends="$depends postgresql postgresql-server"
+  fi
 
   if [ "x$RBENV_VERSION" = "x" ]; then
     # additional dependencies if using system ruby and not rbenv
@@ -175,7 +196,14 @@ fi
 
 if [ "$os" = "debian" ]; then
   if [ "$HAVESUDO" = "1" ]; then
-    sudo apt-get install -y build-essential git curl libxslt1-dev libxml2-dev zlib1g zlib1g-dev sqlite3 libsqlite3-dev libffi-dev libssl-dev libreadline-dev lsof
+    if [ "$FACTER_RDBMS" = "postgresql" ]; then
+      sudo apt-get install -y postgresql postgresql-client
+    fi
+    if [ "$FACTER_RDBMS" = "sqlite" ]; then
+      sudo apt-get install -y sqlite3 libsqlite3-dev
+    fi
+
+    sudo apt-get install -y build-essential git curl libxslt1-dev libxml2-dev zlib1g zlib1g-dev libffi-dev libssl-dev libreadline-dev lsof
 
     # adding the ruby stuff as a distinct step so we can conditionalize this a bit better later
     #   --just throw in a   if [ "x$RBENV_VERSION" != "x" ]; then    ?
