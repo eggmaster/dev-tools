@@ -33,7 +33,8 @@ fi
 # If using postgresql, set some sane defaults if not present in environment
 if [ "$FACTER_RDBMS" = "postgresql" ]; then 
   if [ "x$FACTER_RDBMS_DBNAME" = "x" ]; then
-    export FACTER_RDBMS_DBNAME=conductor
+    # assign a random database name if no database name provided by user
+    export FACTER_RDBMS_DBNAME=conductor_`</dev/urandom tr -dc a-z0-9 | head -c${1:-4}`
   fi
   if [ "x$FACTER_RDBMS_USERNAME" = "x" ]; then
     export FACTER_RDBMS_USERNAME=$USER
@@ -156,7 +157,7 @@ if [ "$os" = "f16" -o "$os" = "f17" -o "$os" = "el6" ]; then
   if [ "$FACTER_RDBMS" = "sqlite" ]; then
     depends="$depends sqlite-devel"  #sqlite3
   elif [ "$FACTER_RDBMS" = "postgresql" ]; then
-    depends="$depends postgresql postgresql-server"
+    depends="$depends postgresql-devel postgresql postgresql-server"
   fi
 
   if [ "x$RBENV_VERSION" = "x" ]; then
@@ -183,6 +184,33 @@ if [ "$os" = "f16" -o "$os" = "f17" -o "$os" = "el6" ]; then
         exit 1
       fi
     done
+
+    if [ "$FACTER_RDBMS" = "postgresql" ]; then
+      # initialize the postgresql database
+      # if postgresql has already been initialized with the default data dir (/var/lib/pgsql/data)
+      # then this is a no-op
+      if [ "$os" == "el6" ]; then
+        sudo service postgresql initdb
+      else
+        sudo postgresql-setup initdb
+      fi
+
+      # start the postgresql service
+      if [ "$os" == "el6" ]; then
+        sudo service postgresql start
+      else
+        sudo systemctl start postgresql.service
+      fi
+
+      sudo su - postgres -c "psql -c \"CREATE USER $FACTER_RDBMS_USERNAME WITH PASSWORD '$FACTER_RDBMS_PASSWORD';\""
+      if [ $? -ne 0 ]; then
+        echo "INFO: postgresql create user $FACTER_RDBMS_USERNAME failed"
+      fi
+      sudo su - postgres -c "psql -c \"alter user $FACTER_RDBMS_USERNAME CREATEDB;\""
+      if [ $? -ne 0 ]; then
+        echo "INFO: postgresql grant user $FACTER_RDBMS_USERNAME CREATEDB failed"
+      fi
+    fi
   else
     for dep in `echo $depends`; do
       # sanity check that it just installed
@@ -197,7 +225,7 @@ fi
 if [ "$os" = "debian" ]; then
   if [ "$HAVESUDO" = "1" ]; then
     if [ "$FACTER_RDBMS" = "postgresql" ]; then
-      sudo apt-get install -y postgresql postgresql-client
+      sudo apt-get install -y postgresql postgresql-client libpq-dev
     fi
     if [ "$FACTER_RDBMS" = "sqlite" ]; then
       sudo apt-get install -y sqlite3 libsqlite3-dev
@@ -208,6 +236,21 @@ if [ "$os" = "debian" ]; then
     # adding the ruby stuff as a distinct step so we can conditionalize this a bit better later
     #   --just throw in a   if [ "x$RBENV_VERSION" != "x" ]; then    ?
     sudo apt-get install -y ruby1.9.1 ruby1.9.1-dev libruby1.9.1
+
+    if [ "$FACTER_RDBMS" = "postgresql" ]; then
+      # set up postgres
+      # apt-get install postgresql will start postgresql service, but
+      # poke it in any case.
+      sudo service postgresql start
+      sudo su - postgres -c "psql -c \"CREATE USER $FACTER_RDBMS_USERNAME WITH PASSWORD '$FACTER_RDBMS_PASSWORD';\""
+      if [ $? -ne 0 ]; then
+        echo "INFO: postgresql create user $FACTER_RDBMS_USERNAME failed"
+      fi
+      sudo su - postgres -c "psql -c \"alter user $FACTER_RDBMS_USERNAME CREATEDB;\""
+      if [ $? -ne 0 ]; then
+        echo "INFO: postgresql grant user $FACTER_RDBMS_USERNAME CREATEDB failed"
+      fi
+    fi
   fi
 fi
 
