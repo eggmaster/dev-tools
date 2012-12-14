@@ -365,7 +365,7 @@ cd $WORKDIR
 if [ ! -d dev-tools ]; then
   git clone https://github.com/eggmaster/dev-tools.git
   cd dev-tools
-  git checkout postgresql-work
+  git checkout rbtest
   cd ..
   if [ "x$DEV_TOOLS_BRANCH" != "x" ]; then
     cd dev-tools
