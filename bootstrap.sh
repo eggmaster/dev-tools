@@ -186,6 +186,15 @@ if [ "$os" = "f16" -o "$os" = "f17" -o "$os" = "el6" ]; then
     done
 
     if [ "$FACTER_RDBMS" = "postgresql" ]; then
+
+      # If postgresql is already initialized, we do not want to overwrite settings in
+      # an existing /var/lib/pgsql/data/pg_hba.conf
+      PG_HBA_CONF_EXISTS=0
+      if sudo test -e /var/lib/pgsql/data/pg_hba.conf &> /dev/null; then
+        echo "INFO: postgresql database previously initialized"
+        PG_HBA_CONF_EXISTS=1
+      fi
+
       # initialize the postgresql database
       # if postgresql has already been initialized with the default data dir (/var/lib/pgsql/data)
       # then this is a no-op
@@ -195,6 +204,13 @@ if [ "$os" = "f16" -o "$os" = "f17" -o "$os" = "el6" ]; then
         sudo postgresql-setup initdb
       fi
 
+      # if there was no pre-existing pg_hba.conf, set all authentication methods to 'trust'
+      if [ $PG_HBA_CONF_EXISTS -eq 0 ]; then
+        sudo bash -c "echo 'local all all peer' > /var/lib/pgsql/data/pg_hba.conf"
+        sudo bash -c "echo 'host all all 127.0.0.1/32 md5' >> /var/lib/pgsql/data/pg_hba.conf"
+        sudo bash -c "echo 'host all all ::1/128 md5' >> /var/lib/pgsql/data/pg_hba.conf"
+      fi
+
       # start the postgresql service
       if [ "$os" == "el6" ]; then
         sudo service postgresql start
@@ -202,6 +218,7 @@ if [ "$os" = "f16" -o "$os" = "f17" -o "$os" = "el6" ]; then
         sudo systemctl start postgresql.service
       fi
 
+      # create the database user and grant CREATEDB
       sudo su - postgres -c "psql -c \"CREATE USER $FACTER_RDBMS_USERNAME WITH PASSWORD '$FACTER_RDBMS_PASSWORD';\""
       if [ $? -ne 0 ]; then
         echo "INFO: postgresql create user $FACTER_RDBMS_USERNAME failed"
@@ -239,9 +256,11 @@ if [ "$os" = "debian" ]; then
 
     if [ "$FACTER_RDBMS" = "postgresql" ]; then
       # set up postgres
-      # apt-get install postgresql will start postgresql service, but
-      # poke it in any case.
+      # apt-get install postgresql starts the postgresql service, but
+      # attempt to start it in case it was previously installed
       sudo service postgresql start
+
+      # create the database user and grant CREATEDB
       sudo su - postgres -c "psql -c \"CREATE USER $FACTER_RDBMS_USERNAME WITH PASSWORD '$FACTER_RDBMS_PASSWORD';\""
       if [ $? -ne 0 ]; then
         echo "INFO: postgresql create user $FACTER_RDBMS_USERNAME failed"
@@ -382,7 +401,10 @@ fi
 
 cd $WORKDIR
 if [ ! -d dev-tools ]; then
-  git clone https://github.com/aeolus-incubator/dev-tools.git
+  git clone https://github.com/eggmaster/dev-tools.git
+    cd dev-tools
+    git checkout top-ick
+    cd ..
   if [ "x$DEV_TOOLS_BRANCH" != "x" ]; then
     cd dev-tools
     git checkout $DEV_TOOLS_BRANCH
